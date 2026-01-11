@@ -1,0 +1,13 @@
+{
+  "name": "notification-system-deployment",
+  "private": true,
+  "description": "Root proxy for Railway deployment",
+  "engines": {
+    "node": "18.x"
+  },
+  "scripts": {
+    "postinstall": "cd backend && npm install",
+    "start": "cd backend && npm start",
+    "worker": "cd backend && npm run worker"
+  }
+}
