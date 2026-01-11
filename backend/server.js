@@ -21,6 +21,7 @@ console.log('----------------------------------------');
 const { Server } = require("socket.io");
 const { MongoClient, ObjectId } = require("mongodb");
 const { enqueuePush, enqueueEmail, getQueueStats, closeQueues } = require("./queues/notificationQueue");
+const { startWorkers } = require("./workers/start");
 
 const app = express();
 const server = http.createServer(app);
@@ -1129,6 +1130,15 @@ app.use((error, req, res, next) => {
 // Start server
 async function startServer() {
   await connectDB();
+
+  // Start the background workers (Push & Email consumers)
+  console.log("🔄 Initializing background workers...");
+  // We don't await this because it starts long-running processors
+  startWorkers().then(() => {
+    console.log("✅ Background workers started");
+  }).catch(err => {
+    console.error("❌ Failed to start background workers:", err);
+  });
 
   server.listen(PORT, "0.0.0.0", () => {
     console.log("=================================");

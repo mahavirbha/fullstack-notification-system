@@ -318,7 +318,17 @@ process.on('SIGINT', async () => {
 });
 
 // Start workers
-startWorkers().catch((error) => {
-  console.error('❌ Worker startup error:', error);
-  process.exit(1);
-});
+async function run() {
+  try {
+    await startWorkers();
+  } catch (error) {
+    console.error('❌ Worker startup error:', error);
+    process.exit(1);
+  }
+}
+
+if (require.main === module) {
+  run();
+}
+
+module.exports = { startWorkers };
