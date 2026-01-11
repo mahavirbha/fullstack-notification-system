@@ -3,8 +3,10 @@ require('dotenv').config();
 const Queue = require('bull');
 const Redis = require('ioredis');
 
-// Debug Redis Connection
-const REDIS_URL = process.env.REDIS_URL;
+// Direct hardcode for debugging purposes
+const REDIS_URL = "redis://default:mgoJWyIshKDxO2wNSR0YeFMhviy5MqVh@redis-10025.crce217.ap-south-1-1.ec2.cloud.redislabs.com:10025";
+// const REDIS_URL = process.env.REDIS_URL;
+
 if (!REDIS_URL) {
   console.error('❌ REDIS_URL environment variable is MISSING. Falling back to localhost.');
 } else {
