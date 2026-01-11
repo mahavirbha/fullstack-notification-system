@@ -1,6 +1,35 @@
-// Configurable API base
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.0.5:3000'; // change per network
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+
+// Auto-detect dev server IP from Expo (no hardcoded IP needed)
+function getApiUrl() {
+  // Production: use env var
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  
+  // Development: auto-detect from Expo's debuggerHost
+  const debuggerHost = Constants.expoConfig?.hostUri || Constants.manifest?.debuggerHost;
+  let host = debuggerHost ? debuggerHost.split(':')[0] : null;
+  
+  // On Android emulator, localhost doesn't work - must use 10.0.2.2
+  if (Platform.OS === 'android' && (!host || host === 'localhost')) {
+    return 'http://10.0.2.2:3000';
+  }
+  
+  // If we have a valid host from debugger, use it
+  if (host) {
+    return `http://${host}:3000`;
+  }
+  
+  // Fallback for web/iOS
+  return 'http://localhost:3000';
+}
+
+const API_URL = getApiUrl();
 const MOCK_DELAY_MS = 300; // simulate network latency for assignment requirements
+
+console.log('📡 API URL:', API_URL); // Debug log to verify correct URL
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -30,6 +59,19 @@ export const api = {
     const searchParams = new URLSearchParams({ page: 1, limit: 20, ...params });
     return request(`/api/users?${searchParams.toString()}`);
   },
+
+  // Multi-device support
+  addDevice: (userId, deviceData) =>
+    request(`/api/users/${userId}/devices`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(deviceData),
+    }),
+
+  removeDevice: (userId, deviceId) =>
+    request(`/api/users/${userId}/devices/${deviceId}`, {
+      method: 'DELETE',
+    }),
 
   // Notifications
   createNotification: (notification) =>

@@ -13,9 +13,10 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useUser } from '../context/UserContext';
 import { api } from '../services/api';
+import { MaterialIcons, Feather } from '@expo/vector-icons';
 
 export default function NotificationsScreen() {
-  const { currentUser } = useUser();
+  const { currentUser, notificationEvent } = useUser();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -26,6 +27,15 @@ export default function NotificationsScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [loadingSeed, setLoadingSeed] = useState(false);
+
+  // React to WebSocket notification events
+  useEffect(() => {
+    if (notificationEvent && currentUser?.id) {
+      console.log('🔔 Notification event detected, refreshing...');
+      fetchNotifications(currentUser.id, { reset: true });
+      fetchStats(currentUser.id);
+    }
+  }, [notificationEvent]);
 
   // Refresh when tab comes into focus
   useFocusEffect(
@@ -121,9 +131,13 @@ export default function NotificationsScreen() {
   };
 
   const typeColors = { transactional: '#2196F3', marketing: '#9C27B0', alert: '#F44336', system: '#607D8B' };
+  const statusColors = { pending: '#FFC107', sent: '#2196F3', delivered: '#4CAF50', failed: '#F44336', unread: '#2196F3', read: '#9E9E9E' };
 
   const renderNotification = ({ item }) => {
     const isUnread = item.channels?.inApp?.status === 'unread';
+    const pushStatus = item.channels?.push?.status || 'pending';
+    const emailStatus = item.channels?.email?.status || 'pending';
+
     return (
       <TouchableOpacity
         style={{
@@ -141,7 +155,20 @@ export default function NotificationsScreen() {
         </View>
         <Text style={{ fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 4 }} numberOfLines={1}>{item.title}</Text>
         <Text style={{ fontSize: 13, color: '#666' }} numberOfLines={2}>{item.body}</Text>
-        <Text style={{ fontSize: 11, color: '#aaa', marginTop: 8 }}>{new Date(item.createdAt).toLocaleString()}</Text>
+        
+        {/* Channel Status Badges */}
+        <View style={{ flexDirection: 'row', marginTop: 8, gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f5', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 3 }}>
+            <Feather name="smartphone" size={12} color="#666" style={{ marginRight: 4 }} />
+            <Text style={{ fontSize: 9, color: statusColors[pushStatus], fontWeight: 'bold' }}>{pushStatus}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f5', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 3 }}>
+            <Feather name="mail" size={12} color="#666" style={{ marginRight: 4 }} />
+            <Text style={{ fontSize: 9, color: statusColors[emailStatus], fontWeight: 'bold' }}>{emailStatus}</Text>
+          </View>
+        </View>
+
+        <Text style={{ fontSize: 11, color: '#aaa', marginTop: 6 }}>{new Date(item.createdAt).toLocaleString()}</Text>
       </TouchableOpacity>
     );
   };
@@ -150,7 +177,7 @@ export default function NotificationsScreen() {
   if (!currentUser) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, backgroundColor: '#f5f5f5' }}>
-        <Text style={{ fontSize: 48, marginBottom: 16 }}>👤</Text>
+        <MaterialIcons name="person-off" size={48} color="#9e9e9e" style={{ marginBottom: 16 }} />
         <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 8 }}>No User Selected</Text>
         <Text style={{ fontSize: 14, color: '#666', textAlign: 'center' }}>Go to the Users tab to create or select a user first.</Text>
       </View>
@@ -228,7 +255,7 @@ export default function NotificationsScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', marginTop: 60 }}>
-              <Text style={{ fontSize: 48, marginBottom: 12 }}>📭</Text>
+              <MaterialIcons name="inbox" size={48} color="#9e9e9e" style={{ marginBottom: 12 }} />
               <Text style={{ fontSize: 16, fontWeight: '600', color: '#333' }}>No Notifications</Text>
               <Text style={{ fontSize: 13, color: '#888', marginTop: 4 }}>Send one from the Create tab</Text>
             </View>

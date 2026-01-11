@@ -1,9 +1,21 @@
 // server.js - Production-Ready Backend API
+require('dotenv').config();
 const express = require("express");
 const cors = require("cors");
+const http = require("http");
+const { Server } = require("socket.io");
 const { MongoClient, ObjectId } = require("mongodb");
+const { enqueuePush, enqueueEmail, getQueueStats, closeQueues } = require("./queues/notificationQueue");
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
+
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
 const DB_NAME = process.env.DB_NAME || "notification_system";
@@ -20,6 +32,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Attach io to app for use in routes
+app.set('io', io);
+
 // Database connection
 let db;
 let notificationsCollection;
@@ -30,7 +45,7 @@ let mongoClient;
 async function connectDB() {
   try {
     mongoClient = new MongoClient(MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000,
     });
 
     await mongoClient.connect();
@@ -81,18 +96,22 @@ async function createIndexes() {
 
 // Graceful shutdown
 process.on("SIGTERM", async () => {
-  console.log("SIGTERM signal received: closing MongoDB connection");
+  console.log("SIGTERM signal received: closing connections");
   if (mongoClient) {
     await mongoClient.close();
   }
+  await closeQueues();
+  server.close();
   process.exit(0);
 });
 
 process.on("SIGINT", async () => {
-  console.log("\nSIGINT signal received: closing MongoDB connection");
+  console.log("\nSIGINT signal received: closing connections");
   if (mongoClient) {
     await mongoClient.close();
   }
+  await closeQueues();
+  server.close();
   process.exit(0);
 });
 
@@ -117,6 +136,171 @@ app.get("/health", async (req, res) => {
     },
     timestamp: new Date().toISOString(),
   });
+});
+
+// Admin: Get all users
+app.get("/api/admin/users", async (req, res) => {
+  try {
+    if (!usersCollection) {
+      return res.status(503).json({ 
+        success: false,
+        error: "Database not available" 
+      });
+    }
+
+    const users = await usersCollection
+      .find({}, { projection: { _id: 1, name: 1, email: 1, createdAt: 1 } })
+      .sort({ name: 1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      data: users,
+    });
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message: error.message,
+    });
+  }
+});
+
+// Admin: Get all notifications (with user/type/status filters)
+app.get("/api/admin/notifications", async (req, res) => {
+  try {
+    if (!notificationsCollection) {
+      return res.status(503).json({
+        success: false,
+        error: "Database not available",
+      });
+    }
+
+    const {
+      page = 1,
+      limit = 50,
+      type,
+      status,
+      userId,
+    } = req.query;
+
+    const pageNum = parseInt(page, 10);
+    const limitNum = Math.min(parseInt(limit, 10), 100); // Max 100
+    const skip = (pageNum - 1) * limitNum;
+
+    // Base match - userId is stored as ObjectId in DB
+    const pipeline = [];
+    const matchConditions = {};
+
+    if (type) matchConditions.type = type;
+    if (userId && ObjectId.isValid(userId)) {
+      matchConditions.userId = new ObjectId(userId);
+    }
+
+    if (Object.keys(matchConditions).length) {
+      pipeline.push({ $match: matchConditions });
+    }
+
+    // Compute channel-derived flags and overallStatus
+    pipeline.push(
+      {
+        $addFields: {
+          hasDelivered: {
+            $or: [
+              { $eq: ["$channels.email.status", "delivered"] },
+              { $eq: ["$channels.push.status", "delivered"] },
+              { $eq: ["$channels.inApp.status", "read"] },
+            ],
+          },
+          hasFailed: {
+            $or: [
+              { $eq: ["$channels.email.status", "failed"] },
+              { $eq: ["$channels.push.status", "failed"] },
+              { $eq: ["$channels.inApp.status", "failed"] },
+            ],
+          },
+        },
+      },
+      {
+        $addFields: {
+          overallStatus: {
+            $switch: {
+              branches: [
+                {
+                  case: {
+                    $and: ["$hasDelivered", { $not: ["$hasFailed"] }],
+                  },
+                  then: "delivered",
+                },
+                {
+                  case: {
+                    $and: ["$hasFailed", { $not: ["$hasDelivered"] }],
+                  },
+                  then: "failed",
+                },
+                {
+                  case: { $and: ["$hasDelivered", "$hasFailed"] },
+                  then: "partial",
+                },
+              ],
+              default: "pending",
+            },
+          },
+        },
+      }
+    );
+
+    if (status) {
+      pipeline.push({ $match: { overallStatus: status } });
+    }
+
+    // Join user info for display in admin panel (userId is ObjectId, matches users._id)
+    pipeline.push(
+      {
+        $lookup: {
+          from: "users",
+          localField: "userId",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $addFields: { user: { $arrayElemAt: ["$user", 0] } } },
+      { $addFields: { userId: { $toString: "$userId" } } }
+    );
+
+    pipeline.push(
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limitNum }],
+          meta: [{ $count: "total" }],
+        },
+      }
+    );
+
+    const result = await notificationsCollection.aggregate(pipeline).toArray();
+    const data = result[0]?.data || [];
+    const total = result[0]?.meta?.[0]?.total || 0;
+
+    res.json({
+      success: true,
+      data,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching admin notifications:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message: error.message,
+    });
+  }
 });
 
 // Get notifications with pagination and search
@@ -334,9 +518,55 @@ app.post("/api/notifications", async (req, res) => {
     };
 
     const result = await notificationsCollection.insertOne(notification);
+    const notificationId = result.insertedId.toString();
 
-    // In production, this would trigger queue jobs for push/email
-    console.log(`📨 Notification created: ${result.insertedId}`);
+    console.log(`📨 Notification created: ${notificationId}`);
+
+    // Fetch user info for email
+    const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+
+    // Enqueue push notification job
+    try {
+      await enqueuePush({
+        notificationId,
+        userId,
+        title,
+        body,
+        type,
+        priority,
+      });
+      console.log(`✅ Push job enqueued for ${notificationId}`);
+    } catch (error) {
+      console.error(`❌ Failed to enqueue push job:`, error.message);
+    }
+
+    // Enqueue email notification job
+    try {
+      await enqueueEmail({
+        notificationId,
+        userId,
+        userEmail: user?.email,
+        userName: user?.name,
+        title,
+        body,
+        type,
+        priority,
+      });
+      console.log(`✅ Email job enqueued for ${notificationId}`);
+    } catch (error) {
+      console.error(`❌ Failed to enqueue email job:`, error.message);
+    }
+
+    // Emit real-time event to WebSocket clients
+    const io = req.app.get('io');
+    io.to(`user:${userId}`).emit('notification:created', {
+      notificationId,
+      type,
+      title,
+      body,
+      priority,
+      createdAt: notification.createdAt,
+    });
 
     res.status(201).json({
       success: true,
@@ -413,7 +643,7 @@ app.post("/api/users", async (req, res) => {
       return res.status(503).json({ error: "Database not available" });
     }
 
-    const { email, name } = req.body;
+    const { email, name, phone, deviceToken } = req.body;
 
     if (!email) {
       return res.status(400).json({ error: "Email is required" });
@@ -427,6 +657,8 @@ app.post("/api/users", async (req, res) => {
       const result = await usersCollection.insertOne({
         email,
         name: name || email.split("@")[0],
+        phone: phone || null,
+        devices: [], // Array of devices for multi-device support
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -441,6 +673,8 @@ app.post("/api/users", async (req, res) => {
         _id: user._id,
         email: user.email,
         name: user.name,
+        phone: user.phone,
+        devices: user.devices || [],
       },
     });
   } catch (error) {
@@ -475,7 +709,7 @@ app.get("/api/users", async (req, res) => {
 
     const users = await usersCollection
       .find(query)
-      .project({ email: 1, name: 1, createdAt: 1 })
+      .project({ email: 1, name: 1, phone: 1, devices: 1, createdAt: 1 })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
@@ -498,6 +732,198 @@ app.get("/api/users", async (req, res) => {
     res.status(500).json({
       error: "Internal server error",
       message: error.message,
+    });
+  }
+});
+
+// Add or update device for push notifications (multi-device support)
+app.post("/api/users/:userId/devices", async (req, res) => {
+  try {
+    if (!usersCollection) {
+      return res.status(503).json({ error: "Database not available" });
+    }
+
+    const { userId } = req.params;
+    const { deviceToken, deviceId, platform } = req.body;
+
+    if (!deviceToken || !deviceId) {
+      return res.status(400).json({ error: "Device token and device ID are required" });
+    }
+
+    const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const devices = user.devices || [];
+
+    // Check if device already exists
+    const deviceIndex = devices.findIndex(d => d.deviceId === deviceId);
+
+    const deviceData = {
+      deviceId,
+      token: deviceToken,
+      platform: platform || 'unknown',
+      lastActive: new Date(),
+      addedAt: deviceIndex === -1 ? new Date() : devices[deviceIndex].addedAt,
+    };
+
+    if (deviceIndex !== -1) {
+      // Update existing device
+      devices[deviceIndex] = deviceData;
+      console.log(`🔄 Updated device ${deviceId} for user ${userId}`);
+    } else {
+      // Add new device
+      devices.push(deviceData);
+      console.log(`📱 Added device ${deviceId} for user ${userId}`);
+    }
+
+    // Update user with new devices array
+    await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          devices,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    res.json({
+      success: true,
+      message: deviceIndex !== -1 ? "Device updated successfully" : "Device added successfully",
+      deviceCount: devices.length,
+    });
+  } catch (error) {
+    console.error("Error adding device:", error);
+    res.status(500).json({
+      error: "Internal server error",
+      message: error.message,
+    });
+  }
+});
+
+// Remove a device from user (logout/unregister)
+app.delete("/api/users/:userId/devices/:deviceId", async (req, res) => {
+  try {
+    if (!usersCollection) {
+      return res.status(503).json({ error: "Database not available" });
+    }
+
+    const { userId, deviceId } = req.params;
+
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $pull: { devices: { deviceId } },
+        $set: { updatedAt: new Date() },
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    console.log(`🗑️  Removed device ${deviceId} for user ${userId}`);
+
+    res.json({
+      success: true,
+      message: "Device removed successfully",
+    });
+  } catch (error) {
+    console.error("Error removing device:", error);
+    res.status(500).json({
+      error: "Internal server error",
+      message: error.message,
+    });
+  }
+});
+
+// Resend notification endpoint (for admin panel)
+app.post("/api/notifications/:id/resend", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid notification ID",
+      });
+    }
+
+    const notification = await notificationsCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        error: "Notification not found",
+      });
+    }
+
+    const user = await usersCollection.findOne({
+      _id: new ObjectId(notification.userId),
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // Re-queue notification jobs
+    const jobs = [];
+
+    // Corrected Email Job Structure
+    if (user.email) {
+      jobs.push(
+        enqueueEmail({
+          notificationId: id,
+          userId: notification.userId.toString(),
+          userEmail: user.email,
+          userName: user.name,
+          title: notification.title,
+          body: notification.body || notification.message || '',
+          type: notification.type || 'info',
+          priority: notification.priority || 'medium'
+        })
+      );
+    }
+
+    // Corrected Push Job Structure
+    if (user.devices?.length > 0) {
+      jobs.push(
+        enqueuePush({
+          notificationId: id,
+          userId: notification.userId.toString(),
+          title: notification.title,
+          body: notification.body || notification.message || '',
+          type: notification.type || 'info',
+          priority: notification.priority || 'medium'
+        })
+      );
+    }
+    
+    await Promise.all(jobs);
+
+    console.log(`🔄 Resent notification ${id} (${jobs.length} jobs queued)`);
+
+    res.json({
+      success: true,
+      message: "Notification re-queued successfully",
+      data: {
+        notificationId: id,
+        jobsQueued: jobs.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error resending notification:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
     });
   }
 });
@@ -628,6 +1054,45 @@ app.post("/api/seed", async (req, res) => {
   }
 });
 
+// Queue monitoring endpoint
+app.get("/api/queue/stats", async (req, res) => {
+  try {
+    const stats = await getQueueStats();
+    res.json({
+      success: true,
+      stats,
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    console.error("Error fetching queue stats:", error);
+    res.status(500).json({
+      error: "Internal server error",
+      message: error.message,
+    });
+  }
+});
+
+// WebSocket connection handler
+io.on('connection', (socket) => {
+  console.log(`🔌 WebSocket client connected: ${socket.id}`);
+
+  // Join user-specific room
+  socket.on('subscribe', (userId) => {
+    socket.join(`user:${userId}`);
+    console.log(`✅ Client ${socket.id} subscribed to user:${userId}`);
+  });
+
+  // Leave user-specific room
+  socket.on('unsubscribe', (userId) => {
+    socket.leave(`user:${userId}`);
+    console.log(`❌ Client ${socket.id} unsubscribed from user:${userId}`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔌 WebSocket client disconnected: ${socket.id}`);
+  });
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
@@ -649,13 +1114,15 @@ app.use((error, req, res, next) => {
 async function startServer() {
   await connectDB();
 
-  app.listen(PORT, "0.0.0.0", () => {
+  server.listen(PORT, "0.0.0.0", () => {
     console.log("=================================");
     console.log("🚀 Notification System Backend");
     console.log("=================================");
     console.log(`Environment: ${NODE_ENV}`);
     console.log(`Server: http://localhost:${PORT}`);
     console.log(`Health: http://localhost:${PORT}/health`);
+    console.log(`WebSocket: ws://localhost:${PORT}`);
+    console.log(`Queue Stats: http://localhost:${PORT}/api/queue/stats`);
     console.log("=================================");
   });
 }

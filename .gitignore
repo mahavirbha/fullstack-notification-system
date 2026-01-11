@@ -1,0 +1,31 @@
+# Environment files with secrets
+.env
+*.env
+!.env.example
+
+# Firebase service account (SENSITIVE - never commit)
+**/firebase-service-account.json
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+.expo/
+android/build/
+ios/build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Duplicate folder (nested project)
+fullstack-notification-system/
