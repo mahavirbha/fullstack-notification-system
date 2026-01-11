@@ -1,5 +1,8 @@
 // server.js - Production-Ready Backend API
-require('dotenv').config();
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
+
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
@@ -11,6 +14,7 @@ console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('PORT:', process.env.PORT);
 console.log('MONGODB_URI:', process.env.MONGODB_URI ? '****** (Set)' : '❌ MISSING');
 console.log('REDIS_URL:', process.env.REDIS_URL ? '****** (Set)' : '❌ MISSING');
+console.log('REDIS_URL Length:', process.env.REDIS_URL ? process.env.REDIS_URL.length : 0);
 console.log('Current Directory:', process.cwd());
 console.log('----------------------------------------');
 
