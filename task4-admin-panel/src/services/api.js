@@ -1,5 +1,5 @@
 // API Service for Admin Panel
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = 'https://fullstack-notification-system-production.up.railway.app';
 
 async function request(path, options = {}) {
   try {

@@ -3,6 +3,9 @@ import { Platform } from 'react-native';
 
 // Auto-detect dev server IP from Expo (no hardcoded IP needed)
 function getApiUrl() {
+  return 'https://fullstack-notification-system-production.up.railway.app';
+  
+  /*
   // Production: use env var
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL;
@@ -24,6 +27,7 @@ function getApiUrl() {
   
   // Fallback for web/iOS
   return 'http://localhost:3000';
+  */
 }
 
 const API_URL = getApiUrl();
