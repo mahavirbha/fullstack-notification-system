@@ -7,17 +7,6 @@ const express = require("express");
 const cors = require("cors");
 const http = require("http");
 
-// Debug Environment Variables
-console.log('----------------------------------------');
-console.log('🔍 ENVIRONMENT DEBUGGING');
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('PORT:', process.env.PORT);
-console.log('MONGODB_URI:', process.env.MONGODB_URI ? '****** (Set)' : '❌ MISSING');
-console.log('REDIS_URL:', process.env.REDIS_URL ? '****** (Set)' : '❌ MISSING');
-console.log('REDIS_URL Length:', process.env.REDIS_URL ? process.env.REDIS_URL.length : 0);
-console.log('Current Directory:', process.cwd());
-console.log('----------------------------------------');
-
 const { Server } = require("socket.io");
 const { MongoClient, ObjectId } = require("mongodb");
 const { enqueuePush, enqueueEmail, getQueueStats, closeQueues } = require("./queues/notificationQueue");

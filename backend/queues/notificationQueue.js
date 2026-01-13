@@ -4,13 +4,6 @@ const Queue = require('bull');
 const Redis = require('ioredis');
 
 const REDIS_URL = process.env.REDIS_URL;
-
-if (!REDIS_URL) {
-  console.error('❌ REDIS_URL environment variable is MISSING. Falling back to localhost.');
-} else {
-  console.log('✅ REDIS_URL found:', REDIS_URL.replace(/:[^:@]*@/, ':****@')); // Log masked URL
-}
-
 const redisUrl = REDIS_URL || 'redis://localhost:6379';
 
 // Create Redis clients for Bull
