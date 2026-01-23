@@ -15,7 +15,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.notificationsystem.app",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -38,8 +40,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "notification-system"
+        "projectId": "41c6d355-1321-4a4a-b220-97d79c4be166"
       }
-    }
+    },
+    "owner": "mahavirbha"
   }
 }

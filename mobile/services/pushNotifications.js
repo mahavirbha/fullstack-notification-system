@@ -2,6 +2,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './api';
 
@@ -81,9 +82,16 @@ export async function registerForPushNotifications(userId) {
     // Get unique device ID
     const deviceId = await getDeviceId();
 
-    // Get the Expo push token
+    // Get the Expo push token (projectId from app.json)
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    
+    if (!projectId) {
+      console.error('❌ No projectId found in app.json extra.eas.projectId');
+      return null;
+    }
+    
     const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: 'notification-system', // Match your app.json
+      projectId,
     });
     
     const expoPushToken = tokenData.data;

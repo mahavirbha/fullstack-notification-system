@@ -13,7 +13,18 @@ function initializeFirebase() {
   if (admin) return admin;
   
   try {
-    const serviceAccount = require(FIREBASE_SERVICE_ACCOUNT_PATH);
+    let serviceAccount;
+    
+    // First try environment variable (for Railway/production)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      console.log('📱 Loading Firebase credentials from environment variable');
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    } else {
+      // Fall back to file (for local development)
+      console.log('📱 Loading Firebase credentials from file');
+      serviceAccount = require(FIREBASE_SERVICE_ACCOUNT_PATH);
+    }
+    
     admin = require('firebase-admin');
     
     if (!admin.apps.length) {
