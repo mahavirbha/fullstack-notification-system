@@ -94,6 +94,18 @@ fullstack-notification-system/
 └── README.md                     # This file
 ```
 
+## 🌐 Live Demo
+
+**Backend API (Deployed on Railway):**
+- Health Check: https://fullstack-notification-system-production.up.railway.app/health
+- API Base URL: https://fullstack-notification-system-production.up.railway.app
+
+**Database:**
+- MongoDB Atlas (Cloud-hosted)
+- Redis Cloud (Managed instance)
+
+> **Note:** Mobile and Admin Panel clients are configured to connect to the live backend by default. For local development, see [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md).
+
 ## 🚀 Quick Start
 
 ### Prerequisites

@@ -1,0 +1,7 @@
+{
+  "userId": "6960e2d4d0fb314d7199da57",
+  "type": "alert",
+  "title": "Test Push Notification",
+  "body": "This should appear on your phone!",
+  "priority": "high"
+}
