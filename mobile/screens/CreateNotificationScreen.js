@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   useWindowDimensions,
-  StyleSheet
+  StyleSheet,
+  Animated
 } from 'react-native';
 import { useUser } from '../context/UserContext';
 import { api } from '../services/api';
@@ -25,6 +26,25 @@ export default function CreateNotificationScreen() {
   const [loading, setLoading] = useState(false);
   const { width } = useWindowDimensions();
   const isWeb = width >= 900;
+  
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const showSuccessToast = () => {
+    fadeAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.delay(2500),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
 
   const handleCreate = async () => {
     if (!currentUser) {
@@ -46,11 +66,7 @@ export default function CreateNotificationScreen() {
         priority,
       });
       if (result.success) {
-        if (Platform.OS === 'web') {
-          alert('Notification sent successfully!');
-        } else {
-          Alert.alert('Sent!', 'Notification created successfully');
-        }
+        showSuccessToast();
         setTitle('');
         setBody('');
       }
@@ -225,6 +241,22 @@ export default function CreateNotificationScreen() {
 
         </View>
       </ScrollView>
+
+      <Animated.View 
+        style={[
+          styles.toastContainer, 
+          { 
+            opacity: fadeAnim,
+            transform: [{ translateY: fadeAnim.interpolate({inputRange: [0, 1], outputRange: [20, 0]}) }]
+          }
+        ]}
+        pointerEvents="box-none"
+      >
+        <View style={styles.toastContent}>
+             <MaterialIcons name="check-circle" size={24} color="#4CAF50" />
+             <Text style={styles.toastText}>Notification Sent Successfully!</Text>
+        </View>
+      </Animated.View>
     </KeyboardAvoidingView>
   );
 }
@@ -412,4 +444,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
   },
+  toastContainer: {
+    position: 'absolute',
+    bottom: 24,
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+  },
+  toastContent: {
+    backgroundColor: '#333',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  toastText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 10,
+  }
 });
