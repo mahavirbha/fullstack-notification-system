@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+// Main entry point - imports screens for navigation
 import { Text, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NavigationContainer } from '@react-navigation/native';
@@ -9,6 +10,7 @@ import { UserProvider } from './context/UserContext';
 import UsersScreen from './screens/UsersScreen';
 import CreateNotificationScreen from './screens/CreateNotificationScreen';
 import NotificationsScreen from './screens/NotificationsScreen';
+import WebContainer from './components/WebContainer';
 
 const Tab = createBottomTabNavigator();
 
@@ -53,9 +55,10 @@ export default function App() {
 
   return (
     <UserProvider>
-      <StatusBar style="auto" />
-      <NavigationContainer>
-        <Tab.Navigator
+      <WebContainer>
+        <StatusBar style="auto" />
+        <NavigationContainer>
+          <Tab.Navigator
           screenOptions={{
             tabBarActiveTintColor: '#2196F3',
             tabBarInactiveTintColor: '#666',
@@ -100,6 +103,7 @@ export default function App() {
           />
         </Tab.Navigator>
       </NavigationContainer>
+      </WebContainer>
     </UserProvider>
   );
 }

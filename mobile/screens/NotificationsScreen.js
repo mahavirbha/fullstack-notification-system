@@ -2,36 +2,39 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
   FlatList,
   TouchableOpacity,
   RefreshControl,
   Alert,
-  Modal,
   ActivityIndicator,
+  useWindowDimensions,
+  StyleSheet,
+  Platform,
+  Modal,
+  ScrollView // Added ScrollView
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useUser } from '../context/UserContext';
 import { api } from '../services/api';
 import { MaterialIcons, Feather } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+const typeColors = { transactional: '#2196F3', marketing: '#9C27B0', alert: '#F44336', system: '#607D8B' };
+const statusColors = { pending: '#FFC107', sent: '#2196F3', delivered: '#4CAF50', failed: '#F44336', unread: '#2196F3', read: '#9E9E9E' };
 
 export default function NotificationsScreen() {
   const { currentUser, notificationEvent } = useUser();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState(null);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [selectedNotification, setSelectedNotification] = useState(null);
-  const [loadingSeed, setLoadingSeed] = useState(false);
+  const { width } = useWindowDimensions();
+  const isWeb = width >= 768;
 
   // React to WebSocket notification events
   useEffect(() => {
     if (notificationEvent && currentUser?.id) {
-      console.log('🔔 Notification event detected, refreshing...');
       fetchNotifications(currentUser.id, { reset: true });
       fetchStats(currentUser.id);
     }
@@ -43,6 +46,7 @@ export default function NotificationsScreen() {
       if (currentUser?.id) {
         fetchNotifications(currentUser.id, { reset: true });
         fetchStats(currentUser.id);
+        setSelectedNotification(null);
       }
     }, [currentUser?.id])
   );
@@ -58,34 +62,24 @@ export default function NotificationsScreen() {
     }
   }, [currentUser?.id]);
 
-  // Debounced search
-  useEffect(() => {
-    if (!currentUser?.id) return;
-    const handle = setTimeout(() => {
-      fetchNotifications(currentUser.id, { reset: true });
-    }, 400);
-    return () => clearTimeout(handle);
-  }, [search]);
-
   const fetchNotifications = useCallback(async (uid, { reset = false } = {}) => {
     if (!uid) return;
-    const nextPage = reset ? 1 : page + 1;
     if (reset) setLoading(true);
-    else setLoadingMore(true);
 
     try {
-      const result = await api.getNotifications(uid, { page: nextPage, limit: 20, search });
+      const result = await api.getNotifications(uid, { page: 1, limit: 50 }); // Fetch more for ease
       const items = result.notifications || [];
-      setNotifications((prev) => (reset ? items : [...prev, ...items]));
-      setPage(nextPage);
-      setHasMore(result.pagination?.hasMore ?? items.length > 0);
+      setNotifications(items);
+      if (isWeb && items.length > 0 && !selectedNotification) {
+        // Auto-select first item on web if nothing selected
+       // setSelectedNotification(items[0]); 
+      }
     } catch (error) {
       Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
-  }, [page, search]);
+  }, [isWeb, selectedNotification]);
 
   const fetchStats = async (uid) => {
     try {
@@ -107,205 +101,481 @@ export default function NotificationsScreen() {
   const handleMarkAsRead = async (id) => {
     try {
       await api.markAsRead(id);
-      if (currentUser?.id) {
-        fetchNotifications(currentUser.id, { reset: true });
-        fetchStats(currentUser.id);
-      }
+      // Update local state smoothly
+      setNotifications(prev => prev.map(n => n._id === id ? { ...n, channels: { ...n.channels, inApp: { status: 'read' } } } : n));
+      fetchStats(currentUser.id);
     } catch (error) {
-      Alert.alert('Error', error.message);
+     console.error(error);
     }
   };
 
-  const handleSeed = async () => {
-    if (!currentUser?.id) return;
-    setLoadingSeed(true);
-    try {
-      await api.seedNotifications(currentUser.id, 80);
-      await fetchNotifications(currentUser.id, { reset: true });
-      await fetchStats(currentUser.id);
-    } catch (error) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setLoadingSeed(false);
-    }
-  };
-
-  const typeColors = { transactional: '#2196F3', marketing: '#9C27B0', alert: '#F44336', system: '#607D8B' };
-  const statusColors = { pending: '#FFC107', sent: '#2196F3', delivered: '#4CAF50', failed: '#F44336', unread: '#2196F3', read: '#9E9E9E' };
-
-  const renderNotification = ({ item }) => {
+  const NotificationItem = ({ item, isSelected, onPress }) => {
     const isUnread = item.channels?.inApp?.status === 'unread';
     const pushStatus = item.channels?.push?.status || 'pending';
     const emailStatus = item.channels?.email?.status || 'pending';
 
     return (
       <TouchableOpacity
-        style={{
-          backgroundColor: '#fff', padding: 14, borderRadius: 10, marginBottom: 10,
-          borderLeftWidth: isUnread ? 4 : 0, borderLeftColor: '#2196F3',
-        }}
-        onPress={() => { setSelectedNotification(item); if (isUnread) handleMarkAsRead(item._id); }}
+        style={[
+          styles.itemContainer,
+          isSelected && styles.itemSelected,
+          isUnread && styles.itemUnread
+        ]}
+        onPress={onPress}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-          <View style={{ backgroundColor: typeColors[item.type] || '#999', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, marginRight: 8 }}>
-            <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>{item.type?.toUpperCase()}</Text>
+        <View style={styles.itemHeader}>
+          <View style={[styles.typeBadge, { backgroundColor: typeColors[item.type] || '#999' }]}>
+            <Text style={styles.typeText}>{item.type?.toUpperCase().slice(0, 1)}</Text>
           </View>
-          <Text style={{ fontSize: 11, color: '#888' }}>{item.priority}</Text>
-          {isUnread && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#2196F3', marginLeft: 'auto' }} />}
+          <Text style={styles.timeText}>{new Date(item.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
+          {isUnread && <View style={styles.unreadDot} />}
         </View>
-        <Text style={{ fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 4 }} numberOfLines={1}>{item.title}</Text>
-        <Text style={{ fontSize: 13, color: '#666' }} numberOfLines={2}>{item.body}</Text>
         
-        {/* Channel Status Badges */}
-        <View style={{ flexDirection: 'row', marginTop: 8, gap: 6 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f5', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 3 }}>
-            <Feather name="smartphone" size={12} color="#666" style={{ marginRight: 4 }} />
-            <Text style={{ fontSize: 9, color: statusColors[pushStatus], fontWeight: 'bold' }}>{pushStatus}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f5', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 3 }}>
-            <Feather name="mail" size={12} color="#666" style={{ marginRight: 4 }} />
-            <Text style={{ fontSize: 9, color: statusColors[emailStatus], fontWeight: 'bold' }}>{emailStatus}</Text>
-          </View>
+        <Text style={[styles.itemTitle, isUnread && styles.textBold]} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.itemBody} numberOfLines={2}>{item.body}</Text>
+        
+        <View style={styles.statusRow}>
+          <Feather name="smartphone" size={12} color={statusColors[pushStatus]} />
+          <View style={{ width: 8 }} />
+          <Feather name="mail" size={12} color={statusColors[emailStatus]} />
         </View>
-
-        <Text style={{ fontSize: 11, color: '#aaa', marginTop: 6 }}>{new Date(item.createdAt).toLocaleString()}</Text>
       </TouchableOpacity>
     );
   };
 
-  // No user selected
+  const DetailView = ({ item }) => {
+    if (!item) return (
+      <View style={styles.emptyDetail}>
+        <Feather name="inbox" size={64} color="#ddd" />
+        <Text style={styles.emptyText}>Select a notification to view details</Text>
+      </View>
+    );
+
+    return (
+      <View style={styles.detailContainer}>
+        <View style={styles.detailHeader}>
+          <View style={[styles.detailTypeBadge, { backgroundColor: typeColors[item.type] || '#999' }]}>
+             <Text style={styles.detailTypeText}>{item.type?.toUpperCase()}</Text>
+          </View>
+          <Text style={styles.detailDate}>{new Date(item.createdAt).toLocaleString()}</Text>
+        </View>
+
+        <Text style={styles.detailTitle}>{item.title}</Text>
+        
+        <View style={styles.detailBodyBox}>
+          <Text style={styles.detailBody}>{item.body}</Text>
+        </View>
+
+        <View style={styles.detailSection}>
+          <Text style={styles.sectionTitle}>Delivery Status</Text>
+          <View style={styles.statusGrid}>
+             <View style={styles.statusCard}>
+                <Feather name="bell" size={20} color="#555" />
+                <Text style={styles.statusLabel}>In-App</Text>
+                <Text style={[styles.statusValue, { color: statusColors[item.channels?.inApp?.status || 'unread'] }]}>
+                  {item.channels?.inApp?.status || 'Unread'}
+                </Text>
+             </View>
+             <View style={styles.statusCard}>
+                <Feather name="smartphone" size={20} color="#555" />
+                <Text style={styles.statusLabel}>Push</Text>
+                <Text style={[styles.statusValue, { color: statusColors[item.channels?.push?.status || 'pending'] }]}>
+                  {item.channels?.push?.status || 'Pending'}
+                </Text>
+             </View>
+             <View style={styles.statusCard}>
+                <Feather name="mail" size={20} color="#555" />
+                <Text style={styles.statusLabel}>Email</Text>
+                <Text style={[styles.statusValue, { color: statusColors[item.channels?.email?.status || 'pending'] }]}>
+                  {item.channels?.email?.status || 'Pending'}
+                </Text>
+             </View>
+          </View>
+        </View>
+
+        <View style={styles.detailSection}>
+          <Text style={styles.sectionTitle}>Metadata</Text>
+           <Text style={styles.metaText}>ID: {item._id}</Text>
+           <Text style={styles.metaText}>Priority: {item.priority}</Text>
+        </View>
+      </View>
+    );
+  };
+
   if (!currentUser) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, backgroundColor: '#f5f5f5' }}>
+      <View style={styles.centerContainer}>
         <MaterialIcons name="person-off" size={48} color="#9e9e9e" style={{ marginBottom: 16 }} />
-        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 8 }}>No User Selected</Text>
-        <Text style={{ fontSize: 14, color: '#666', textAlign: 'center' }}>Go to the Users tab to create or select a user first.</Text>
+        <Text style={styles.centerTitle}>No User Selected</Text>
+        <Text style={styles.centerText}>Go to the Users tab to create or select a user first.</Text>
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
-      {/* Header: User + Stats */}
-      <View style={{ backgroundColor: '#fff', padding: 14, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#4CAF50', justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-            <Text style={{ color: '#fff', fontWeight: 'bold' }}>{currentUser.name?.charAt(0)?.toUpperCase() || '?'}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '600', color: '#333' }}>{currentUser.name}</Text>
-            <Text style={{ fontSize: 11, color: '#888' }}>{currentUser.email}</Text>
-          </View>
+    <View style={styles.container}>
+      {/* Master List */}
+      <View style={[styles.listContainer, isWeb && styles.webListContainer]}>
+        <View style={styles.header}>
+             <Text style={styles.headerTitle}>Inbox</Text>
+             {stats && (
+               <View style={styles.statsContainer}>
+                 <View style={styles.statItem}>
+                   <Text style={styles.statLabel}>Total</Text>
+                   <Text style={styles.statValue}>{stats.total || 0}</Text>
+                 </View>
+                 <View style={styles.divider} />
+                 <View style={styles.statItem}>
+                   <Text style={[styles.statLabel, styles.statLabelUnread]}>Unread</Text>
+                   <Text style={[styles.statValue, styles.statValueUnread]}>{stats.unread || 0}</Text>
+                 </View>
+               </View>
+             )}
         </View>
-
-        {stats && (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 8, backgroundColor: '#fafafa', borderRadius: 8 }}>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#2196F3' }}>{stats.total}</Text>
-              <Text style={{ fontSize: 11, color: '#888' }}>Total</Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#F44336' }}>{stats.unread}</Text>
-              <Text style={{ fontSize: 11, color: '#888' }}>Unread</Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#4CAF50' }}>{stats.read}</Text>
-              <Text style={{ fontSize: 11, color: '#888' }}>Read</Text>
-            </View>
-          </View>
+        
+        {loading && !refreshing ? (
+          <ActivityIndicator style={{ marginTop: 20 }} color="#2196F3" />
+        ) : (
+          <FlatList
+            data={notifications}
+            keyExtractor={item => item._id}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            renderItem={({ item }) => (
+               <NotificationItem 
+                 item={item} 
+                 isSelected={selectedNotification?._id === item._id}
+                 onPress={() => {
+                   setSelectedNotification(item);
+                   if (item.channels?.inApp?.status === 'unread') {
+                     handleMarkAsRead(item._id);
+                   }
+                 }}
+               />
+            )}
+            ListEmptyComponent={
+              <View style={{ padding: 32, alignItems: 'center' }}>
+                <Text style={{ color: '#999' }}>No notifications yet</Text>
+              </View>
+            }
+            contentContainerStyle={{ padding: 16 }}
+          />
         )}
       </View>
 
-      {/* Search + Actions */}
-      <View style={{ backgroundColor: '#fff', padding: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
-        <TextInput
-          style={{ borderWidth: 1, borderColor: '#ddd', padding: 10, borderRadius: 8, fontSize: 14, backgroundColor: '#fafafa', marginBottom: 10 }}
-          placeholder="Search by title or body..."
-          value={search}
-          onChangeText={setSearch}
-        />
-        <View style={{ flexDirection: 'row' }}>
-          <TouchableOpacity
-            style={{ flex: 1, backgroundColor: '#2196F3', padding: 10, borderRadius: 8, alignItems: 'center', marginRight: 8 }}
-            onPress={onRefresh}
-          >
-            <Text style={{ color: '#fff', fontWeight: 'bold' }}>Refresh</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={{ flex: 1, backgroundColor: loadingSeed ? '#ccc' : '#FF9800', padding: 10, borderRadius: 8, alignItems: 'center' }}
-            onPress={handleSeed}
-            disabled={loadingSeed}
-          >
-            <Text style={{ color: '#fff', fontWeight: 'bold' }}>{loadingSeed ? 'Seeding...' : 'Generate Mock'}</Text>
-          </TouchableOpacity>
+      {/* Detail View (Web Only) */}
+      {isWeb && (
+        <View style={styles.webDetailContainer}>
+           <DetailView item={selectedNotification} />
         </View>
-      </View>
-
-      {/* List */}
-      {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} size="large" />
-      ) : (
-        <FlatList
-          data={notifications}
-          renderItem={renderNotification}
-          keyExtractor={(item, index) => item._id ? `${item._id}-${index}` : `notif-${index}`}
-          contentContainerStyle={{ padding: 12 }}
-          onEndReachedThreshold={0.3}
-          onEndReached={() => { if (!loadingMore && hasMore) fetchNotifications(currentUser.id); }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          ListEmptyComponent={
-            <View style={{ alignItems: 'center', marginTop: 60 }}>
-              <MaterialIcons name="inbox" size={48} color="#9e9e9e" style={{ marginBottom: 12 }} />
-              <Text style={{ fontSize: 16, fontWeight: '600', color: '#333' }}>No Notifications</Text>
-              <Text style={{ fontSize: 13, color: '#888', marginTop: 4 }}>Send one from the Create tab</Text>
-            </View>
-          }
-          ListFooterComponent={
-            hasMore && notifications.length > 0 ? (
-              <TouchableOpacity
-                style={{ padding: 12, backgroundColor: '#2196F3', borderRadius: 8, alignItems: 'center', marginTop: 8 }}
-                onPress={() => fetchNotifications(currentUser.id)}
-                disabled={loadingMore}
-              >
-                {loadingMore ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: 'bold' }}>Load More</Text>}
-              </TouchableOpacity>
-            ) : null
-          }
-        />
       )}
 
-      {/* Detail Modal */}
-      <Modal visible={!!selectedNotification} transparent animationType="fade" onRequestClose={() => setSelectedNotification(null)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }} activeOpacity={1} onPress={() => setSelectedNotification(null)}>
-          <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 20 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-              <View style={{ backgroundColor: typeColors[selectedNotification?.type] || '#999', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 }}>
-                <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>{selectedNotification?.type?.toUpperCase()}</Text>
-              </View>
-              <Text style={{ marginLeft: 8, fontSize: 12, color: '#888' }}>{selectedNotification?.priority} priority</Text>
-            </View>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 8 }}>{selectedNotification?.title}</Text>
-            <Text style={{ fontSize: 14, color: '#666', marginBottom: 16, lineHeight: 20 }}>{selectedNotification?.body}</Text>
-            <Text style={{ fontSize: 11, color: '#aaa', marginBottom: 16 }}>{selectedNotification ? new Date(selectedNotification.createdAt).toLocaleString() : ''}</Text>
-            
-            {selectedNotification?.channels && (
-              <View style={{ backgroundColor: '#f8f8f8', padding: 12, borderRadius: 8, marginBottom: 16 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#666', marginBottom: 8 }}>CHANNEL STATUS</Text>
-                {['push', 'email', 'inApp'].map((ch) => (
-                  <View key={ch} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <Text style={{ fontSize: 12, color: '#888' }}>{ch}</Text>
-                    <Text style={{ fontSize: 12, color: '#333', fontWeight: '600' }}>{selectedNotification.channels?.[ch]?.status || 'n/a'}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-            
-            <TouchableOpacity style={{ backgroundColor: '#2196F3', padding: 12, borderRadius: 8, alignItems: 'center' }} onPress={() => setSelectedNotification(null)}>
-              <Text style={{ color: '#fff', fontWeight: 'bold' }}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      {/* Mobile Modal for Details */}
+      {!isWeb && (
+        <Modal
+          animationType="slide"
+          presentationStyle="pageSheet"
+          visible={!!selectedNotification}
+          onRequestClose={() => setSelectedNotification(null)}
+        >
+          <SafeAreaView style={styles.modalContainer} edges={['top', 'left', 'right']}>
+             <View style={styles.modalHeader}>
+               <TouchableOpacity onPress={() => setSelectedNotification(null)} style={styles.closeBtn}>
+                 <Feather name="x" size={24} color="#333" />
+               </TouchableOpacity>
+               <Text style={styles.modalTitle}>Notification Details</Text>
+               <View style={{ width: 24 }} />
+             </View>
+             <ScrollView contentContainerStyle={{ padding: 16 }}>
+                <DetailView item={selectedNotification} />
+             </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      )}
+
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    flexDirection: 'row',
+    width: '100%',
+    maxWidth: 1400,
+    alignSelf: 'center',
+  },
+  listContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRightWidth: 1,
+    borderRightColor: '#e0e0e0',
+  },
+  webListContainer: {
+    flex: 0.4,
+    maxWidth: 400,
+  },
+  webDetailContainer: {
+    flex: 0.6,
+    backgroundColor: '#fafafa',
+    padding: 24,
+    justifyContent: 'center',
+  },
+  header: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    padding: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  statItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  divider: {
+    width: 1,
+    height: 16,
+    backgroundColor: '#ddd',
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  statValue: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '700',
+  },
+  statLabelUnread: {
+    color: '#2196F3',
+  },
+  statValueUnread: {
+    color: '#2196F3',
+  },
+  itemContainer: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  itemSelected: {
+    borderColor: '#2196F3',
+    backgroundColor: '#F0F8FF',
+  },
+  itemUnread: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#2196F3',
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  typeBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  timeText: {
+    fontSize: 12,
+    color: '#999',
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2196F3',
+    position: 'absolute',
+    right: -6,
+    top: -6,
+  },
+  itemTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  textBold: {
+    fontWeight: '700',
+    color: '#000',
+  },
+  itemBody: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 8,
+  },
+  statusRow: {
+    flexDirection: 'row',
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    backgroundColor: '#f5f5f5',
+  },
+  centerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  centerText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+  },
+  emptyDetail: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#999',
+    marginTop: 16,
+  },
+  detailContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 32,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    height: '100%',
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  detailTypeBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  detailTypeText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  detailDate: {
+    fontSize: 13,
+    color: '#999',
+  },
+  detailTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+  },
+  detailBodyBox: {
+    backgroundColor: '#f9f9f9',
+    padding: 24,
+    borderRadius: 12,
+    marginBottom: 32,
+  },
+  detailBody: {
+    fontSize: 16,
+    color: '#444',
+    lineHeight: 24,
+  },
+  detailSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#888',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  statusGrid: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  statusCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#eee',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  statusLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  statusValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  metaText: {
+    fontSize: 13,
+    color: '#999',
+    marginBottom: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    backgroundColor: '#fff',
+  },
+  closeBtn: {
+    padding: 4,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+  },
+});

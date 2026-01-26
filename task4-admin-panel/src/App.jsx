@@ -1,65 +1,103 @@
+import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Home, PlusCircle, Bell, ClipboardList } from 'lucide-react';
+import { 
+  PlusCircle, 
+  Bell, 
+  ClipboardList, 
+  Menu, 
+  X
+} from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import NotificationList from './pages/NotificationList';
 import CreateNotification from './pages/CreateNotification';
 import './App.css';
 
-function Navigation() {
+function Sidebar({ isOpen, onClose }) {
   const location = useLocation();
+  
+  const navItems = [
+    { path: '/', label: 'All Notifications', icon: ClipboardList },
+    { path: '/create', label: 'Create New', icon: PlusCircle },
+  ];
 
   return (
-    <nav className="navbar">
-      <div className="nav-container">
-        <div className="nav-brand">
-          <Bell className="nav-icon" size={24} /> 
-          <h1>Notification Admin Panel</h1>
+    <>
+      <div 
+        className={`sidebar-overlay ${isOpen ? 'visible' : ''}`} 
+        onClick={onClose}
+      />
+      
+      <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <div className="brand">
+            <Bell className="brand-icon" size={24} />
+            <span className="brand-text">Admin Panel</span>
+          </div>
+          <button className="icon-btn md-hidden" onClick={onClose}>
+            <X size={20} />
+          </button>
         </div>
-        <div className="nav-links">
-          <Link
-            to="/"
-            className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
-          >
-            <ClipboardList size={18} style={{ marginRight: '8px' }} />
-            All Notifications
-          </Link>
-          <Link
-            to="/create"
-            className={`nav-link ${location.pathname === '/create' ? 'active' : ''}`}
-          >
-            <PlusCircle size={18} style={{ marginRight: '8px' }} />
-            Create New
-          </Link>
+
+        <nav className="sidebar-nav">
+          {navItems.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
+              onClick={() => window.innerWidth < 768 && onClose()}
+            >
+              <item.icon size={20} />
+              <span>{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <p>© 2026 NotifSystem</p>
         </div>
-      </div>
-    </nav>
+      </aside>
+    </>
   );
 }
 
 function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
     <BrowserRouter>
-      <div className="app">
-        <Toaster position="bottom-left" />
-        <Navigation />
-        <main className="main-content">
-          <Routes>
-            <Route path="/" element={<NotificationList />} />
-            <Route path="/create" element={<CreateNotification />} />
-          </Routes>
-        </main>
-        <footer className="footer">
-          <p>
-            Notification Admin Panel • Built with React + Vite •{' '}
-            <a
-              href="http://localhost:3000"
-              target="_blank"
-              rel="noopener noreferrer"
+      <div className="app-layout">
+        <Toaster position="bottom-right" toastOptions={{
+          style: {
+            background: 'var(--neutral-800)',
+            color: '#fff',
+            borderRadius: 'var(--radius-md)',
+          }
+        }}/>
+        
+        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        
+        <div className="main-wrapper">
+          <header className="top-header">
+            <button 
+              className="icon-btn md-hidden"
+              onClick={() => setSidebarOpen(true)}
+              style={{ marginRight: '1rem' }}
             >
-              API: localhost:3000
-            </a>
-          </p>
-        </footer>
+              <Menu size={24} />
+            </button>
+            <h1 className="page-title">Dashboard</h1>
+            <div className="user-avatar">AD</div>
+          </header>
+
+          <main className="content-area">
+            <div className="container">
+              <Routes>
+                <Route path="/" element={<NotificationList />} />
+                <Route path="/create" element={<CreateNotification />} />
+              </Routes>
+            </div>
+          </main>
+        </div>
       </div>
     </BrowserRouter>
   );
