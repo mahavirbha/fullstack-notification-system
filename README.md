@@ -100,6 +100,9 @@ fullstack-notification-system/
 - Health Check: https://fullstack-notification-system-production.up.railway.app/health
 - API Base URL: https://fullstack-notification-system-production.up.railway.app
 
+**Admin Panel (Deployed on Vercel):**
+- Dashboard: https://fullstack-notification-system-admin-panel.mahavirbha.in/
+
 **Database:**
 - MongoDB Atlas (Cloud-hosted)
 - Redis Cloud (Managed instance)
