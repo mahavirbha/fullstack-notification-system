@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 // Main entry point - imports screens for navigation
 import { Text, Platform } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -54,56 +55,58 @@ export default function App() {
   }, []);
 
   return (
-    <UserProvider>
-      <WebContainer>
-        <StatusBar style="auto" />
-        <NavigationContainer>
-          <Tab.Navigator
-          screenOptions={{
-            tabBarActiveTintColor: '#2196F3',
-            tabBarInactiveTintColor: '#666',
-            headerStyle: {
-              backgroundColor: '#2196F3',
-            },
-            headerTintColor: '#fff',
-            headerTitleStyle: {
-              fontWeight: '600',
-            },
-          }}
-        >
-          <Tab.Screen
-            name="Users"
-            component={UsersScreen}
-            options={{
-              tabBarIcon: ({ color, size = 22 }) => (
-                <MaterialIcons name="person-outline" size={size} color={color} />
-              ),
-              title: 'Create User',
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <UserProvider>
+        <WebContainer>
+          <StatusBar style="auto" />
+          <NavigationContainer>
+            <Tab.Navigator
+            screenOptions={{
+              tabBarActiveTintColor: '#2196F3',
+              tabBarInactiveTintColor: '#666',
+              headerStyle: {
+                backgroundColor: '#2196F3',
+              },
+              headerTintColor: '#fff',
+              headerTitleStyle: {
+                fontWeight: '600',
+              },
             }}
-          />
-          <Tab.Screen
-            name="Create"
-            component={CreateNotificationScreen}
-            options={{
-              tabBarIcon: ({ color, size = 22 }) => (
-                <MaterialIcons name="add-circle-outline" size={size} color={color} />
-              ),
-              title: 'Send Notification',
-            }}
-          />
-          <Tab.Screen
-            name="Notifications"
-            component={NotificationsScreen}
-            options={{
-              tabBarIcon: ({ color, size = 22 }) => (
-                <MaterialIcons name="notifications-none" size={size} color={color} />
-              ),
-              title: 'View Notifications',
-            }}
-          />
-        </Tab.Navigator>
-      </NavigationContainer>
-      </WebContainer>
-    </UserProvider>
+          >
+            <Tab.Screen
+              name="Users"
+              component={UsersScreen}
+              options={{
+                tabBarIcon: ({ color, size = 22 }) => (
+                  <MaterialIcons name="person-outline" size={size} color={color} />
+                ),
+                title: 'Create User',
+              }}
+            />
+            <Tab.Screen
+              name="Create"
+              component={CreateNotificationScreen}
+              options={{
+                tabBarIcon: ({ color, size = 22 }) => (
+                  <MaterialIcons name="add-circle-outline" size={size} color={color} />
+                ),
+                title: 'Send Notification',
+              }}
+            />
+            <Tab.Screen
+              name="Notifications"
+              component={NotificationsScreen}
+              options={{
+                tabBarIcon: ({ color, size = 22 }) => (
+                  <MaterialIcons name="notifications-none" size={size} color={color} />
+                ),
+                title: 'View Notifications',
+              }}
+            />
+          </Tab.Navigator>
+        </NavigationContainer>
+        </WebContainer>
+      </UserProvider>
+    </GestureHandlerRootView>
   );
 }

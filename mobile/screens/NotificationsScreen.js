@@ -11,8 +11,11 @@ import {
   StyleSheet,
   Platform,
   Modal,
-  ScrollView // Added ScrollView
+  ScrollView, // Added ScrollView
+  Animated
 } from 'react-native';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { RectButton } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
 import { useUser } from '../context/UserContext';
 import { api } from '../services/api';
@@ -113,33 +116,74 @@ export default function NotificationsScreen() {
     const isUnread = item.channels?.inApp?.status === 'unread';
     const pushStatus = item.channels?.push?.status || 'pending';
     const emailStatus = item.channels?.email?.status || 'pending';
+    let _swipeableRow;
+
+    const close = () => {
+      _swipeableRow?.close();
+    };
+
+    const renderRightActions = (progress, dragX) => {
+      const scale = dragX.interpolate({
+        inputRange: [-100, 0],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      });
+      
+      return (
+        <RectButton 
+           style={styles.rightAction} 
+           onPress={() => {
+             close();
+             handleMarkAsRead(item._id);
+           }}
+        >
+          <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
+            <Feather name="check" size={24} color="#fff" />
+            <Text style={styles.actionText}>Read</Text>
+          </Animated.View>
+        </RectButton>
+      );
+    };
 
     return (
-      <TouchableOpacity
-        style={[
-          styles.itemContainer,
-          isSelected && styles.itemSelected,
-          isUnread && styles.itemUnread
-        ]}
-        onPress={onPress}
+      <View style={{ marginBottom: 12 }}>
+      <Swipeable 
+        ref={ref => _swipeableRow = ref}
+        renderRightActions={renderRightActions}
+        friction={2}
+        leftThreshold={30}
+        rightThreshold={40}
+        enabled={isUnread} // Disable swipe if already read
       >
-        <View style={styles.itemHeader}>
-          <View style={[styles.typeBadge, { backgroundColor: typeColors[item.type] || '#999' }]}>
-            <Text style={styles.typeText}>{item.type?.toUpperCase().slice(0, 1)}</Text>
+        <TouchableOpacity
+          style={[
+            styles.itemContainer,
+            isSelected && styles.itemSelected,
+            isUnread && styles.itemUnread,
+            { marginBottom: 0 }
+          ]}
+          onPress={onPress}
+          activeOpacity={0.7}
+        >
+          <View style={styles.itemHeader}>
+            <View style={[styles.typeBadge, { backgroundColor: typeColors[item.type] || '#999' }]}>
+              <Text style={styles.typeText}>{item.type?.toUpperCase().slice(0, 1)}</Text>
+            </View>
+            <Text style={styles.timeText}>{new Date(item.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
+            {isUnread && <View style={styles.unreadDot} />}
           </View>
-          <Text style={styles.timeText}>{new Date(item.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
-          {isUnread && <View style={styles.unreadDot} />}
-        </View>
-        
-        <Text style={[styles.itemTitle, isUnread && styles.textBold]} numberOfLines={1}>{item.title}</Text>
-        <Text style={styles.itemBody} numberOfLines={2}>{item.body}</Text>
-        
-        <View style={styles.statusRow}>
-          <Feather name="smartphone" size={12} color={statusColors[pushStatus]} />
-          <View style={{ width: 8 }} />
-          <Feather name="mail" size={12} color={statusColors[emailStatus]} />
-        </View>
-      </TouchableOpacity>
+          
+          <Text style={[styles.itemTitle, isUnread && styles.textBold]} numberOfLines={1}>{item.title}</Text>
+          <Text style={styles.itemBody} numberOfLines={2}>{item.body}</Text>
+          
+          <View style={styles.statusRow}>
+            <Feather name="smartphone" size={12} color={statusColors[pushStatus]} />
+            <View style={{ width: 8 }} />
+            <Feather name="mail" size={12} color={statusColors[emailStatus]} />
+          </View>
+        </TouchableOpacity>
+      </Swipeable>
+      </View>
     );
   };
 
@@ -577,5 +621,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#333',
+  },
+  rightAction: {
+    backgroundColor: '#4CAF50',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
+  },
+  actionText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
   },
 });
