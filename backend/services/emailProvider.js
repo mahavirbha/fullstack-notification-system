@@ -18,11 +18,6 @@ class MockEmailProvider {
     // Simulate network latency
     await delay(1000 + Math.random() * 2000);
 
-    // Simulate random failures (10% failure rate)
-    if (Math.random() < 0.1) {
-      throw new Error('Mock email delivery failed: Temporary network error');
-    }
-
     console.log(`📧 [MOCK] Email sent to ${to}: "${subject}"`);
 
     return {

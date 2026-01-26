@@ -879,6 +879,28 @@ app.post("/api/notifications/:id/resend", async (req, res) => {
       });
     }
 
+    // Reset status in database
+    const updateFields = {
+        updatedAt: new Date()
+    };
+    
+    if (user.email) {
+        updateFields["channels.email.status"] = "pending";
+        updateFields["channels.email.sentAt"] = null; // Optional: clear previous sent time
+        updateFields["channels.email.error"] = null;
+    }
+    
+    if (user.devices?.length > 0) {
+        updateFields["channels.push.status"] = "pending";
+        updateFields["channels.push.sentAt"] = null;
+        updateFields["channels.push.error"] = null;
+    }
+    
+    await notificationsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updateFields }
+    );
+
     // Re-queue notification jobs
     const jobs = [];
 
