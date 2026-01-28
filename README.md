@@ -54,43 +54,60 @@ Complete end-to-end notification system with job queues, worker processes, provi
 ## 📦 Project Structure
 
 ```
-fullstack-notification-system/
-├── backend/                      # Node.js Express API + WebSocket
-│   ├── server.js                 # Main server with REST API
+notification-system/
+├── backend/                      # Node.js Express API + WebSocket + Workers
+│   ├── server.js                 # Main server with REST API & Socket.IO
 │   ├── queues/
-│   │   └── notificationQueue.js  # Bull queue configuration
+│   │   └── notificationQueue.js  # Bull queue configuration (Push/Email)
 │   ├── services/
-│   │   ├── emailProvider.js      # Email provider (SendGrid/Mock)
-│   │   └── pushProvider.js       # Push provider (FCM V1/Mock)
+│   │   ├── emailProvider.js      # Email provider (SendGrid/Nodemailer/Mock)
+│   │   └── pushProvider.js       # Push provider (FCM/Mock)
 │   ├── workers/
-│   │   └── start.js              # Worker processes
-│   ├── package.json
-│   └── .env
-├── mobile/                       # React Native mobile app
-│   ├── screens/
-│   │   ├── UsersScreen.js        # User creation & selection
-│   │   ├── CreateNotificationScreen.js
-│   │   └── NotificationsScreen.js  # List with real-time updates
-│   ├── context/
-│   │   └── UserContext.js        # User state + WebSocket
-│   ├── services/
-│   │   └── api.js
+│   │   └── start.js              # Background worker processes
+│   ├── .env                      # Environment configuration
 │   └── package.json
-├── task4-admin-panel/            # React web admin panel (OPTIONAL)
+│
+├── mobile/                       # React Native Expo app (iOS/Android/Web)
+│   ├── screens/
+│   │   ├── UsersScreen.js        # User management
+│   │   ├── CreateNotificationScreen.js  # Send notifications
+│   │   └── NotificationsScreen.js       # List with real-time updates
+│   ├── context/
+│   │   └── UserContext.js        # Global user state + WebSocket
+│   ├── services/
+│   │   ├── api.js                # Backend API client
+│   │   └── pushNotifications.js  # FCM device registration
+│   ├── components/
+│   │   ├── UserPicker.js         # User dropdown selector
+│   │   └── WebContainer.js       # Fallback for web platform
+│   ├── android/                  # Native Android build configs
+│   └── package.json
+│
+├── task4-admin-panel/            # React Vite web admin panel
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── NotificationTable.jsx
+│   │   │   ├── NotificationTable.jsx    # Data table with filters
 │   │   │   └── CreateNotificationForm.jsx
 │   │   ├── pages/
+│   │   │   ├── CreateNotification.jsx
+│   │   │   └── NotificationList.jsx
 │   │   ├── services/
+│   │   │   └── api.js
 │   │   └── App.jsx
 │   └── package.json
+│
 ├── task1-database/
-│   └── README.md                 # Schema & indexes
+│   └── README.md                 # MongoDB schema design & indexes
 ├── task2-architecture/
-│   └── README.md                 # Architecture diagram
-├── SETUP.md                      # External services setup
+│   └── README.md                 # System architecture diagram
+│
+├── Assignment.md                 # Original assignment brief
+├── SETUP.md                      # External services setup guide
+├── LOCAL_DEVELOPMENT.md          # Local dev environment setup
 ├── TESTING_GUIDE.md              # Complete testing guide
+├── FCM_SETUP.md                  # Firebase Cloud Messaging setup
+├── MULTI_DEVICE_SUPPORT.md       # Multi-device push implementation
+├── INTERVIEW_GUIDE.md            # Interview Q&A guide
 └── README.md                     # This file
 ```
 
@@ -105,6 +122,10 @@ fullstack-notification-system/
 
 **Mobile Web App (Deployed on Vercel):**
 - Web App: https://notifications-expo-web.mahavirbha.in/
+
+**Mobile Native App (Android):**
+- 📱 [Build APK Guide](mobile/BUILD_APK_NOW.md) - Download and install on Android devices
+- Build via EAS: `cd mobile && eas build --platform android --profile preview`
 
 **Database:**
 - MongoDB Atlas (Cloud-hosted)
@@ -464,18 +485,39 @@ socket.emit('subscribe', 'USER_ID');
 
 ## 🚀 Production Deployment
 
-### Backend
-1. Deploy API server (Heroku, AWS, DigitalOcean)
-2. Deploy worker process (same server or separate)
-3. Use managed Redis (Redis Cloud, AWS ElastiCache)
-4. Enable real providers (SendGrid, FCM)
-5. Add monitoring (Sentry, Datadog)
+### Backend (Railway)
+✅ **Deployed**: https://fullstack-notification-system-production.up.railway.app
+- Includes both API server and worker processes
+- Connected to MongoDB Atlas (production database)
+- Connected to Redis Cloud (managed queue storage)
+- Using mock providers by default (set `USE_MOCK_PROVIDERS=false` for real FCM/SendGrid)
 
-### Mobile
-1. Build production APK/IPA
-2. Update API_URL to production server
-3. Publish to App Store / Play Store
-4. Or deploy web version (Vercel, Netlify)
+### Mobile Web App (Vercel)
+✅ **Deployed**: https://notifications-expo-web.mahavirbha.in
+- React Native Expo web build
+- Connects to production backend
+- Real-time WebSocket updates
+
+### Admin Panel (Vercel)
+✅ **Deployed**: https://fullstack-notification-system-admin-panel.mahavirbha.in
+- React web dashboard
+- Full CRUD operations
+- Notification statistics and filtering
+
+### Database & Queue
+- **MongoDB Atlas**: Cloud-hosted production database
+- **Redis Cloud**: Managed Redis for job queues
+- **Socket.IO**: Real-time WebSocket connections
+
+## 📚 Additional Documentation
+
+- [SETUP.md](SETUP.md) - External services setup (Redis, SendGrid, FCM)
+- [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md) - Local development guide
+- [TESTING_GUIDE.md](TESTING_GUIDE.md) - Complete testing workflows
+- [FCM_SETUP.md](FCM_SETUP.md) - Firebase Cloud Messaging setup
+- [MULTI_DEVICE_SUPPORT.md](MULTI_DEVICE_SUPPORT.md) - Multi-device push notifications
+- [task1-database/README.md](task1-database/README.md) - Database schema design
+- [task2-architecture/README.md](task2-architecture/README.md) - System architecture
 
 ## 📄 License
 
